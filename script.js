@@ -1,81 +1,101 @@
-window.addEventListener('scroll',()=>{
-  const nav=document.getElementById('nav');
-  nav.classList.toggle('scrolled', window.scrollY>40);
-  const h=document.documentElement;
-  const pct=(h.scrollTop)/(h.scrollHeight-h.clientHeight)*100;
-  document.getElementById('progress').style.width=pct+'%';
-});
+(function(){
+  'use strict';
+  var reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  var canHover = window.matchMedia('(hover:hover)').matches;
 
-document.querySelectorAll('.faq-item').forEach(item=>{
-  item.querySelector('.faq-q').addEventListener('click',()=>{
-    document.querySelectorAll('.faq-item').forEach(i=>{if(i!==item)i.classList.remove('open')});
-    item.classList.toggle('open');
-  });
-});
+  /* scroll: nav state + progress bar (rAF-throttled, passive) */
+  var nav = document.getElementById('nav');
+  var progress = document.getElementById('progress');
+  var ticking = false;
 
-const io=new IntersectionObserver(entries=>{
-  entries.forEach(e=>{if(e.isIntersecting){e.target.classList.add('in');io.unobserve(e.target);}});
-},{threshold:0.12});
-document.querySelectorAll('.reveal').forEach(el=>io.observe(el));
+  function onScrollFrame(){
+    var scrollY = window.scrollY;
+    nav.classList.toggle('scrolled', scrollY > 40);
+    var h = document.documentElement;
+    var max = h.scrollHeight - h.clientHeight;
+    var pct = max > 0 ? (h.scrollTop / max) * 100 : 0;
+    progress.style.width = pct + '%';
+    ticking = false;
+  }
+  window.addEventListener('scroll', function(){
+    if(!ticking){
+      requestAnimationFrame(onScrollFrame);
+      ticking = true;
+    }
+  }, {passive:true});
 
-/* hero glow follows cursor */
-const heroSection=document.getElementById('heroSection');
-const glow=document.getElementById('heroGlow');
-if(heroSection && window.matchMedia('(hover:hover)').matches){
-  heroSection.addEventListener('mousemove',e=>{
-    const r=heroSection.getBoundingClientRect();
-    glow.style.transform=`translate(${e.clientX-r.left-260}px, ${e.clientY-r.top-260}px)`;
-  });
-}
-
-/* plan billing toggle */
-document.querySelectorAll('.plan-toggle button').forEach(btn=>{
-  btn.addEventListener('click',()=>{
-    document.querySelectorAll('.plan-toggle button').forEach(b=>b.classList.remove('active'));
-    btn.classList.add('active');
-    const cycle=btn.dataset.cycle;
-    document.querySelectorAll('.plan .price[data-'+cycle+']').forEach(el=>{
-      el.innerHTML=el.dataset[cycle];
-    });
-    document.querySelectorAll('.plan .cycle[data-'+cycle+']').forEach(el=>{
-      el.textContent=el.dataset[cycle];
+  /* FAQ accordion */
+  var faqItems = document.querySelectorAll('.faq-item');
+  faqItems.forEach(function(item){
+    item.querySelector('.faq-q').addEventListener('click', function(){
+      faqItems.forEach(function(i){ if(i !== item) i.classList.remove('open'); });
+      item.classList.toggle('open');
     });
   });
-});
 
-/* animated hero counters */
-document.querySelectorAll('.hero-mark .n').forEach(el=>{
-  const raw=el.textContent.trim();
-  const match=raw.match(/[\d.,]+/);
-  if(!match) return;
-  const target=parseFloat(match[0].replace('.','').replace(',','.'));
-  if(isNaN(target)) return;
-  const suffix=raw.replace(match[0],'');
-  let started=false;
-  const obs=new IntersectionObserver(entries=>{
-    entries.forEach(entry=>{
-      if(entry.isIntersecting && !started){
-        started=true;
-        let cur=0; const step=target/26;
-        const t=setInterval(()=>{
-          cur+=step;
-          if(cur>=target){cur=target;clearInterval(t);}
-          el.textContent=(Number.isInteger(target)?Math.round(cur):cur.toFixed(1))+suffix;
-        },28);
+  /* reveal on scroll */
+  var io = new IntersectionObserver(function(entries){
+    entries.forEach(function(e){
+      if(e.isIntersecting){ e.target.classList.add('in'); io.unobserve(e.target); }
+    });
+  }, {threshold:0.12});
+  document.querySelectorAll('.reveal').forEach(function(el){ io.observe(el); });
+
+  /* hero glow follows cursor (desktop only, rAF-throttled) */
+  var heroSection = document.getElementById('heroSection');
+  var glow = document.getElementById('heroGlow');
+  if(heroSection && glow && canHover && !reduceMotion){
+    var glowTicking = false, lastX = 0, lastY = 0;
+    heroSection.addEventListener('mousemove', function(e){
+      var r = heroSection.getBoundingClientRect();
+      lastX = e.clientX - r.left - 260;
+      lastY = e.clientY - r.top - 260;
+      if(!glowTicking){
+        requestAnimationFrame(function(){
+          glow.style.transform = 'translate(' + lastX + 'px,' + lastY + 'px)';
+          glowTicking = false;
+        });
+        glowTicking = true;
       }
-    });
-  },{threshold:0.5});
-  obs.observe(el);
-});
+    }, {passive:true});
+  }
 
-/* magnetic buttons */
-document.querySelectorAll('.btn-lime').forEach(btn=>{
-  if(!window.matchMedia('(hover:hover)').matches) return;
-  btn.addEventListener('mousemove',e=>{
-    const r=btn.getBoundingClientRect();
-    const x=(e.clientX-r.left-r.width/2)*0.25;
-    const y=(e.clientY-r.top-r.height/2)*0.35;
-    btn.style.transform=`translate(${x}px,${y}px)`;
+  /* animated hero counters */
+  document.querySelectorAll('.hero-mark .n').forEach(function(el){
+    var raw = el.textContent.trim();
+    var match = raw.match(/[\d.,]+/);
+    if(!match) return;
+    var target = parseFloat(match[0].replace('.', '').replace(',', '.'));
+    if(isNaN(target)) return;
+    var suffix = raw.replace(match[0], '');
+    var started = false;
+    var obs = new IntersectionObserver(function(entries){
+      entries.forEach(function(entry){
+        if(entry.isIntersecting && !started){
+          started = true;
+          if(reduceMotion){ el.textContent = raw; return; }
+          var cur = 0, step = target / 26;
+          var t = setInterval(function(){
+            cur += step;
+            if(cur >= target){ cur = target; clearInterval(t); }
+            el.textContent = (Number.isInteger(target) ? Math.round(cur) : cur.toFixed(1)) + suffix;
+          }, 28);
+        }
+      });
+    }, {threshold:0.5});
+    obs.observe(el);
   });
-  btn.addEventListener('mouseleave',()=>{btn.style.transform='translate(0,0)';});
-});
+
+  /* magnetic CTA buttons (desktop only) */
+  if(canHover && !reduceMotion){
+    document.querySelectorAll('.btn-lime').forEach(function(btn){
+      btn.addEventListener('mousemove', function(e){
+        var r = btn.getBoundingClientRect();
+        var x = (e.clientX - r.left - r.width / 2) * 0.25;
+        var y = (e.clientY - r.top - r.height / 2) * 0.35;
+        btn.style.transform = 'translate(' + x + 'px,' + y + 'px)';
+      });
+      btn.addEventListener('mouseleave', function(){ btn.style.transform = 'translate(0,0)'; });
+    });
+  }
+})();
